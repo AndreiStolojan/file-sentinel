@@ -1,7 +1,3 @@
-// sapt 7 enunt: sa primeasca oricate aargumente nu mai mult de 10, niciun argument nu se repeta, programul proceseaza doar directoare, orice altceva va fi ignorat
-// captura se va aplica pe toate argumentele care sunt valide
-// utilizatorul va compara snapshotul trecut cu cel curent iar daca sunt diferente, cel vechi va fi actualizat, noi alegem cum
-// avem un argument suplimentar care va fi directorul de iesire care va contine toate snapshoturile intrarilor specificate 
 #include <stdio.h>
 #include <dirent.h>
 #include <stdlib.h>
@@ -10,96 +6,122 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
-// #include <errno.h>
-// #include <time.h> 
+#include <errno.h>
 
 #define NR_MAX_ARG 10
 
-void fileTree(char *path, int fd)
+vvoid createSnapshot(char *path, char *output_dir)
 {
-    DIR *director;
-    director = opendir(path);
+    DIR *dir;
     struct dirent *entry;
-    char path2[1000];
     struct stat buf;
-    if (director == NULL )
+    char path2[1000];
+
+    if ((dir = opendir(path)) == NULL)
     {
-        if(strcmp(path,"-o") == 0)
-        {
-            return;
-        }
-
-        // if(S_ISDIR)
-
-        printf("Eroare la deschiderea directorului %s\n", path);
+        fprintf(stderr, "Eroare la deschiderea directorului %s\n", path);
         return;
     }
-    
-    // struct tm *mtime_info; // Structura pentru a stoca informațiile despre timp
-    // char mtime_str[20];    // Buffer pentru șirul de caractere al timpului modificării
 
-    while ((entry = readdir(director)) != NULL)
+    if (stat(path, &buf) == -1)
     {
-        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0 && strcmp(entry->d_name, "-o") != 0)
+        fprintf(stderr, "Eroare la citirea metadatelor pentru %s\n", path);
+        closedir(dir);
+        return;
+    }
+
+    char snapshot_file[100];
+    sprintf(snapshot_file, "%s/snapshot_%lu.txt", output_dir, (unsigned long) buf.st_ino);
+
+    int snapshot_fd;
+    if ((snapshot_fd = open(snapshot_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR)) == -1)
+    {
+        fprintf(stderr, "Eroare la deschiderea fișierului %s\n", snapshot_file);
+        closedir(dir);
+        return;
+    }
+
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) //scot fisierul parinte si cele ascunse
         {
             sprintf(path2, "%s/%s", path, entry->d_name);
 
             if (lstat(path2, &buf) == -1)
             {
-                printf( "Eroare la citirea metadatelor pentru %s\n", path2);
+                fprintf(stderr, "Eroare la citirea metadatelor pentru %s\n", path2);
                 continue;
             }
 
-           
-            // mtime_info = localtime(&buf.st_mtime);
-            // strftime(mtime_str, sizeof(mtime_str), "%Y-%m-%d %H:%M:%S", mtime_info);
+            if (S_ISDIR(buf.st_mode))
+                createSnapshot(path2, output_dir);
 
-            printf("%s,%o,%lu\n", entry->d_name, buf.st_mode, buf.st_ino);
-            write(fd,entry->d_name,strlen(entry->d_name));
-            write(fd,&buf.st_mode,sizeof(buf.st_mode));
-            write(fd,&buf.st_ino,sizeof(buf.st_ino));
-    
-            fileTree(path2, fd);
-            
-            // dprintf(fd, "%s,%o,%lu,%s\n", entry->d_name, (unsigned int)buf.st_mode, (unsigned long)buf.st_ino, mtime_str);
-            
+            // Scrie informațiile despre fișier în fișierul snapshot
+            if (write(snapshot_fd, &buf, sizeof(struct stat)) != sizeof(struct stat))
+            {
+                fprintf(stderr, "Eroare la scrierea în fișierul %s\n", snapshot_file);
+                closedir(dir);
+                close(snapshot_fd);
+                return;
+            }
+
+            // Scrie numele fișierului în fișierul snapshot
+            if (write(snapshot_fd, entry->d_name, strlen(entry->d_name)) != strlen(entry->d_name))
+            {
+                fprintf(stderr, "Eroare la scrierea în fișierul %s\n", snapshot_file);
+                closedir(dir);
+                close(snapshot_fd);
+                return;
+            }
+
+            // Scrie inode-ul fișierului în fișierul snapshot
+            if (write(snapshot_fd, &(buf.st_ino), sizeof(buf.st_ino)) != sizeof(buf.st_ino))
+            {
+                fprintf(stderr, "Eroare la scrierea în fișierul %s\n", snapshot_file);
+                closedir(dir);
+                close(snapshot_fd);
+                return;
+            }
         }
     }
-    closedir(director);
+
+    closedir(dir);
+    close(snapshot_fd);
 }
+
 
 int main(int argc, char **argv)
 {
-    char *director_output = NULL;
-
-    if(strcmp(argv[argc -2], "-o") == 0)
+    if (argc < 2) //verificare nr de argumente
     {
-        director_output = argv[argc - 1];
-    }
-
-    if (argc >= NR_MAX_ARG + 1)
-    {
-        printf("Prea multe argumente! numar maxim: %d", NR_MAX_ARG - 1);
+        fprintf(stderr, "Nu au fost specificate suficiente argumente\n");
         exit(EXIT_FAILURE);
     }
 
-    int snapshotFile;
-    snapshotFile = open("snapshot.txt", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-
-    if (snapshotFile == -1)
+    if (argc > NR_MAX_ARG + 2) //nr maxim de 10 argumente
     {
-        printf( "Eroare la deschiderea fișierului snapshot.txt\n");
+        fprintf(stderr, "Prea multe argumente! Numar maxim: %d\n", NR_MAX_ARG);
         exit(EXIT_FAILURE);
     }
-    for(int i = 1; i <= NR_MAX_ARG + 1; i ++)
-    {
-        fileTree(argv[i], snapshotFile);
 
-        if(argv[i + 1] == NULL)
+    char *output_dir = NULL;
+    if (strcmp(argv[argc - 2], "-o") == 0) //atribui directorul de output unde are inainte -o
+    {
+        output_dir = argv[argc - 1];
+    }
+
+    for (int i = 1; i < argc - 2; i++) //merge pana la -2 ca -1 e cel de output
+    {
+        DIR *dir;
+        if ((dir = opendir(argv[i])) == NULL)
         {
-            break;
+            fprintf(stderr, "Eroare la deschiderea directorului %s\n", argv[i]);
+            continue;
         }
+        closedir(dir);
+
+        createSnapshot(argv[i], output_dir);// creeaza snapshot pt fiecare argument si il pune in directorul de output
     }
-    close(snapshotFile);
+
     return 0;
 }
