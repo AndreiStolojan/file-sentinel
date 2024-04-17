@@ -7,8 +7,36 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/wait.h>
+#include<libgen.h>
 
 #define NR_MAX_ARG 10
+
+void mutare_fisier_malitios(char *nume_fisier, char *directoare_malitioase)
+{
+    struct stat file_stat;
+    if(stat(nume_fisier, &file_stat) == -1)
+    {
+        fprintf(stderr, "Eroare la obtinerea drepturilor pt fisierul:%s\n",nume_fisier);
+        return;
+    }
+
+    if((file_stat.st_mode & S_IRWXU) == 0 && (file_stat.st_mode & S_IRWXG) == 0 && (file_stat.st_mode & S_IRWXO) == 0)
+    {
+        //Creare path pentru directorul cu fisiere malitioase
+        char path_nou[1000];
+        sprintf(path_nou,"%s/%s",directoare_malitioase,basename(nume_fisier));
+
+        //Mutare fisier malitios in directorul cu fisiere malitioase
+        if(rename(nume_fisier, path_nou) == -1)
+        {
+            fprintf(stderr, "Fisierul %s nu s-a transferat cu succes in directorul pentru fisiere malitioase!\n",nume_fisier);
+            return;
+        }
+
+        printf("Fisierul %s a fost mutat cu succes!\n",nume_fisier);
+    }
+}
 
 void createSnapshot(char *path, char *output_dir)
 {
@@ -31,7 +59,7 @@ void createSnapshot(char *path, char *output_dir)
     }
 
     char snapshot_file[100];
-    sprintf(snapshot_file, "%s/snapshot_%lu.txt", output_dir, (unsigned long) buf.st_ino);
+    sprintf(snapshot_file, "%s/snapshot_%lu.txt", output_dir, buf.st_ino);
 
     int snapshot_fd;
     if ((snapshot_fd = open(snapshot_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR)) == -1)
@@ -105,8 +133,10 @@ int main(int argc, char **argv)
     }
 
     char *output_dir = NULL;
+    char *directoare_malitioase = NULL;
     if (strcmp(argv[argc - 2], "-o") == 0) //atribui directorul de output unde are inainte -o
     {
+
         output_dir = argv[argc - 1];
     }
 
@@ -130,12 +160,13 @@ int main(int argc, char **argv)
         {
             // Suntem în procesul părinte
             int status;
-            waitpid(pid, &status, 0); // Așteptăm terminarea procesului copil
-            if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS)
-            {
-                fprintf(stderr, "Eroare la crearea snapshot-ului pentru directorul %s\n", argv[i]);
-            }
         }
+    }
+
+    waitpid(pid, &status, 0); // Așteptăm terminarea procesului copil
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS)
+    {
+        fprintf(stderr, "Eroare la crearea snapshot-ului pentru directorul %s\n", argv[i]);
     }
 
     return 0;
