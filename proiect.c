@@ -10,7 +10,7 @@
 
 #define NR_MAX_ARG 10
 
-vvoid createSnapshot(char *path, char *output_dir)
+void createSnapshot(char *path, char *output_dir)
 {
     DIR *dir;
     struct dirent *entry;
@@ -110,17 +110,32 @@ int main(int argc, char **argv)
         output_dir = argv[argc - 1];
     }
 
-    for (int i = 1; i < argc - 2; i++) //merge pana la -2 ca -1 e cel de output
+    for (int i = 1; i < argc - 2; i++)
     {
-        DIR *dir;
-        if ((dir = opendir(argv[i])) == NULL)
+        pid_t pid = fork(); // Creăm un proces copil
+
+        if (pid < 0)
         {
-            fprintf(stderr, "Eroare la deschiderea directorului %s\n", argv[i]);
+            // Eroare la fork
+            fprintf(stderr, "Eroare la crearea procesului pentru directorul %s\n", argv[i]);
             continue;
         }
-        closedir(dir);
-
-        createSnapshot(argv[i], output_dir);// creeaza snapshot pt fiecare argument si il pune in directorul de output
+        else if (pid == 0)
+        {
+            // Suntem în procesul copil
+            createSnapshot(argv[i], output_dir);
+            exit(EXIT_SUCCESS); // Terminăm procesul copil după ce am terminat crearea snapshot-ului
+        }
+        else
+        {
+            // Suntem în procesul părinte
+            int status;
+            waitpid(pid, &status, 0); // Așteptăm terminarea procesului copil
+            if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS)
+            {
+                fprintf(stderr, "Eroare la crearea snapshot-ului pentru directorul %s\n", argv[i]);
+            }
+        }
     }
 
     return 0;
