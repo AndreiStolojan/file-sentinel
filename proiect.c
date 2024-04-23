@@ -1,173 +1,176 @@
 #include <stdio.h>
-#include <dirent.h>
 #include <stdlib.h>
-#include <sys/types.h>
 #include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <unistd.h>
+#include <dirent.h>
 #include <errno.h>
 #include <sys/wait.h>
-#include<libgen.h>
+#include <libgen.h>
 
 #define NR_MAX_ARG 10
 
-void mutare_fisier_malitios(char *nume_fisier, char *directoare_malitioase)
-{
+void move_malicious_file(char *filename, char *malicious_dir) {
+    // Obține drepturile de acces ale fișierului
     struct stat file_stat;
-    if(stat(nume_fisier, &file_stat) == -1)
-    {
-        fprintf(stderr, "Eroare la obtinerea drepturilor pt fisierul:%s\n",nume_fisier);
+    if (stat(filename, &file_stat) == -1) {
+        fprintf(stderr, "Eroare la obținerea drepturilor de acces pentru %s: %s\n", filename, strerror(errno));
         return;
     }
 
-    if((file_stat.st_mode & S_IRWXU) == 0 && (file_stat.st_mode & S_IRWXG) == 0 && (file_stat.st_mode & S_IRWXO) == 0)
-    {
-        //Creare path pentru directorul cu fisiere malitioase
-        char path_nou[1000];
-        sprintf(path_nou,"%s/%s",directoare_malitioase,basename(nume_fisier));
+    // Verifică dacă fișierul nu are niciun drept
+    if ((file_stat.st_mode & S_IRWXU) == 0 && (file_stat.st_mode & S_IRWXG) == 0 && (file_stat.st_mode & S_IRWXO) == 0) {
+        // Creează calea pentru noul fișier în directorul de fișiere malițioase
+        char new_path[1000];
+        snprintf(new_path, sizeof(new_path), "%s/%s", malicious_dir, basename(filename));
 
-        //Mutare fisier malitios in directorul cu fisiere malitioase
-        if(rename(nume_fisier, path_nou) == -1)
-        {
-            fprintf(stderr, "Fisierul %s nu s-a transferat cu succes in directorul pentru fisiere malitioase!\n",nume_fisier);
+        // Mută fișierul în directorul de fișiere malițioase
+        if (rename(filename, new_path) == -1) {
+            fprintf(stderr, "Eroare la mutarea fișierului %s în directorul de fișiere malițioase: %s\n", filename, strerror(errno));
             return;
         }
 
-        printf("Fisierul %s a fost mutat cu succes!\n",nume_fisier);
+        printf("Fișierul %s a fost mutat în %s.\n", filename, malicious_dir);
     }
 }
 
-void createSnapshot(char *path, char *output_dir)
+void createSnapshot(char *path, char *output_dir, char *malicious_dir)
 {
-    DIR *dir;
+    // Obține drepturile de acces ale elementului
+    struct stat file_stat;
+    if (stat(path, &file_stat) == -1) {
+        fprintf(stderr, "Eroare la obținerea drepturilor de acces pentru %s: %s\n", path, strerror(errno));
+        return;
+    }
+
+    // Verifică dacă elementul nu are niciun drept
+    if ((file_stat.st_mode & S_IRWXU) == 0 && (file_stat.st_mode & S_IRWXG) == 0 && (file_stat.st_mode & S_IRWXO) == 0) {
+        // Mută elementul în directorul de fișiere malițioase
+        if (rename(path, malicious_dir) == -1) {
+            fprintf(stderr, "Eroare la mutarea elementului %s în directorul de fișiere malițioase: %s\n", path, strerror(errno));
+            return;
+        }
+
+        printf("Elementul %s a fost mutat în %s.\n", path, malicious_dir);
+        return; // Nu facem snapshot pentru elementul malițios
+    }
+
+    // Construiește calea completă pentru fișierul snapshot
+    char snapshot_path[1000];
+    snprintf(snapshot_path, sizeof(snapshot_path), "%s/snapshot_%lu", output_dir, (unsigned long)file_stat.st_ino);
+
+    // Creează fișierul snapshot
+    int snapshot_fd = open(snapshot_path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    if (snapshot_fd == -1) {
+        fprintf(stderr, "Eroare la crearea fișierului snapshot %s: %s\n", snapshot_path, strerror(errno));
+        return;
+    }
+
+    // Scrie informații despre element în fișierul snapshot
+    char buffer[1000];
+    int len = snprintf(buffer, sizeof(buffer), "Nume: %s\n", basename(path));
+    write(snapshot_fd, buffer, len);
+    len = snprintf(buffer, sizeof(buffer), "Tip: %s\n", S_ISDIR(file_stat.st_mode) ? "Director" : "Fișier");
+    write(snapshot_fd, buffer, len);
+    
+    close(snapshot_fd);
+}
+
+void process_directory(char *dir_path, char *output_dir, char *malicious_dir) {
+    DIR *dir = opendir(dir_path);
+    if (!dir) {
+        fprintf(stderr, "Eroare la deschiderea directorului %s: %s\n", dir_path, strerror(errno));
+        return;
+    }
+
     struct dirent *entry;
-    struct stat buf;
-    char path2[1000];
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue; // Ignoră intrările . și ..
+        }
 
-    if ((dir = opendir(path)) == NULL)
-    {
-        fprintf(stderr, "Eroare la deschiderea directorului %s\n", path);
-        return;
-    }
+        // Construiește calea completă pentru fiecare element din director
+        char element_path[1000];
+        snprintf(element_path, sizeof(element_path), "%s/%s", dir_path, entry->d_name);
 
-    if (stat(path, &buf) == -1)
-    {
-        fprintf(stderr, "Eroare la citirea metadatelor pentru %s\n", path);
-        closedir(dir);
-        return;
-    }
 
-    char snapshot_file[100];
-    sprintf(snapshot_file, "%s/snapshot_%lu.txt", output_dir, buf.st_ino);
+        // Aplică scriptul script.sh pentru fiecare fișier din director
+        char command[2000];
+        snprintf(command, sizeof(command), "sudo ./script.sh %s", element_path);
+        system(command);
 
-    int snapshot_fd;
-    if ((snapshot_fd = open(snapshot_file, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR)) == -1)
-    {
-        fprintf(stderr, "Eroare la deschiderea fișierului %s\n", snapshot_file);
-        closedir(dir);
-        return;
-    }
+        // Verifică rezultatul întoarcerii și drepturile fișierului
+        struct stat file_stat;
+        if (stat(element_path, &file_stat) == -1) {
+            fprintf(stderr, "Eroare la obținerea drepturilor de acces pentru %s: %s\n", element_path, strerror(errno));
+            continue;
+        }
 
-    while ((entry = readdir(dir)) != NULL)
-    {
-        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) //scot fisierul parinte si cele ascunse
-        {
-            sprintf(path2, "%s/%s", path, entry->d_name);
+        // Verifică dacă scriptul a returnat 1 și fișierul nu are drepturi
+        if (WEXITSTATUS(system(command)) == 1 && (file_stat.st_mode & S_IRWXU) == 0 && (file_stat.st_mode & S_IRWXG) == 0 && (file_stat.st_mode & S_IRWXO) == 0) {
+            move_malicious_file(element_path, malicious_dir);
+        }
 
-            if (lstat(path2, &buf) == -1)
-            {
-                fprintf(stderr, "Eroare la citirea metadatelor pentru %s\n", path2);
-                continue;
-            }
-
-            if (S_ISDIR(buf.st_mode))
-                createSnapshot(path2, output_dir);
-
-            // Scrie informațiile despre fișier în fișierul snapshot
-            if (write(snapshot_fd, &buf, sizeof(struct stat)) != sizeof(struct stat))
-            {
-                fprintf(stderr, "Eroare la scrierea în fișierul %s\n", snapshot_file);
-                closedir(dir);
-                close(snapshot_fd);
-                return;
-            }
-
-            // Scrie numele fișierului în fișierul snapshot
-            if (write(snapshot_fd, entry->d_name, strlen(entry->d_name)) != strlen(entry->d_name))
-            {
-                fprintf(stderr, "Eroare la scrierea în fișierul %s\n", snapshot_file);
-                closedir(dir);
-                close(snapshot_fd);
-                return;
-            }
-
-            // Scrie inode-ul fișierului în fișierul snapshot
-            if (write(snapshot_fd, &(buf.st_ino), sizeof(buf.st_ino)) != sizeof(buf.st_ino))
-            {
-                fprintf(stderr, "Eroare la scrierea în fișierul %s\n", snapshot_file);
-                closedir(dir);
-                close(snapshot_fd);
-                return;
-            }
+        // Dacă elementul este un director, procesează-l recursiv
+        if (entry->d_type == DT_DIR) {
+            process_directory(element_path, output_dir, malicious_dir);
         }
     }
 
     closedir(dir);
-    close(snapshot_fd);
 }
 
 
 int main(int argc, char **argv)
 {
-    if (argc < 2) //verificare nr de argumente
+    if (argc < 4)
     {
         fprintf(stderr, "Nu au fost specificate suficiente argumente\n");
         exit(EXIT_FAILURE);
     }
 
-    if (argc > NR_MAX_ARG + 2) //nr maxim de 10 argumente
+    char *malicious_dir = NULL; // Directorul special pentru fișiere malițioase
+    char *output_dir = NULL;    // Directorul pentru snapshot-uri
+
+    // Parcurge argumentele pentru a găsi directoarele pentru fișierele malițioase și snapshot-uri
+    for (int i = 1; i < argc; i++)
     {
-        fprintf(stderr, "Prea multe argumente! Numar maxim: %d\n", NR_MAX_ARG);
+        if (strcmp(argv[i], "-o") == 0 && i + 1 < argc)
+        {
+            // Argumentul de dinainte de "-o" este directorul pentru fișierele malițioase
+            malicious_dir = argv[i - 1];
+            // Argumentul de după "-o" este directorul de output
+            output_dir = argv[i + 1];
+        }
+    }
+
+    // Verifică dacă ambele directoare au fost specificate
+    if (!malicious_dir || !output_dir)
+    {
+        fprintf(stderr, "Nu au fost specificate directoarele pentru fișierele malițioase și snapshot-uri (-o)\n");
         exit(EXIT_FAILURE);
     }
 
-    char *output_dir = NULL;
-    char *directoare_malitioase = NULL;
-    if (strcmp(argv[argc - 2], "-o") == 0) //atribui directorul de output unde are inainte -o
+    // Procesează fiecare director dat ca argument în linia de comandă
+    for (int i = 1; i < argc; i++)
     {
-
-        output_dir = argv[argc - 1];
-    }
-
-    for (int i = 1; i < argc - 2; i++)
-    {
-        pid_t pid = fork(); // Creăm un proces copil
-
-        if (pid < 0)
+        if(strcmp(argv[i+1], "-o") == 0)
         {
-            // Eroare la fork
-            fprintf(stderr, "Eroare la crearea procesului pentru directorul %s\n", argv[i]);
+            i=i+3;
+            break;
+        }
+        // Ignoră argumentele "-o" și directoarele asociate acestora
+        if (strcmp(argv[i], "-o") == 0)
+        {
+            i += 2; // Treci peste "-o" și următorul argument care este directorul de output
             continue;
         }
-        else if (pid == 0)
-        {
-            // Suntem în procesul copil
-            createSnapshot(argv[i], output_dir);
-            exit(EXIT_SUCCESS); // Terminăm procesul copil după ce am terminat crearea snapshot-ului
-        }
-        else
-        {
-            // Suntem în procesul părinte
-            int status;
-        }
-    }
 
-    waitpid(pid, &status, 0); // Așteptăm terminarea procesului copil
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != EXIT_SUCCESS)
-    {
-        fprintf(stderr, "Eroare la crearea snapshot-ului pentru directorul %s\n", argv[i]);
+        process_directory(argv[i], output_dir, malicious_dir);
     }
 
     return 0;
 }
+
