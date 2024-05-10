@@ -26,6 +26,8 @@ void move_malicious_file(char *filename, char *malicious_dir) {
         char new_path[1000];
         snprintf(new_path, sizeof(new_path), "%s/%s", malicious_dir, basename(filename));
 
+        printf("Calea nouă pentru mutarea fișierului %s este: %s\n", filename, new_path);
+
         // Mută fișierul în directorul de fișiere malițioase
         if (rename(filename, new_path) == -1) {
             fprintf(stderr, "Eroare la mutarea fișierului %s în directorul de fișiere malițioase: %s\n", filename, strerror(errno));
@@ -36,47 +38,92 @@ void move_malicious_file(char *filename, char *malicious_dir) {
     }
 }
 
+
+
 void createSnapshot(char *path, char *output_dir, char *malicious_dir)
 {
-    // Obține drepturile de acces ale elementului
+    // Obține informații despre elementul actual
     struct stat file_stat;
     if (stat(path, &file_stat) == -1) {
-        fprintf(stderr, "Eroare la obținerea drepturilor de acces pentru %s: %s\n", path, strerror(errno));
+        fprintf(stderr, "Eroare la obținerea informațiilor despre %s: %s\n", path, strerror(errno));
         return;
     }
 
-    // Verifică dacă elementul nu are niciun drept
-    if ((file_stat.st_mode & S_IRWXU) == 0 && (file_stat.st_mode & S_IRWXG) == 0 && (file_stat.st_mode & S_IRWXO) == 0) {
-        // Mută elementul în directorul de fișiere malițioase
-        if (rename(path, malicious_dir) == -1) {
-            fprintf(stderr, "Eroare la mutarea elementului %s în directorul de fișiere malițioase: %s\n", path, strerror(errno));
-            return;
-        }
-
-        printf("Elementul %s a fost mutat în %s.\n", path, malicious_dir);
-        return; // Nu facem snapshot pentru elementul malițios
-    }
-
-    // Construiește calea completă pentru fișierul snapshot
+    // Construiește calea completă pentru fișierul de snapshot
     char snapshot_path[1000];
     snprintf(snapshot_path, sizeof(snapshot_path), "%s/snapshot_%lu", output_dir, (unsigned long)file_stat.st_ino);
 
-    // Creează fișierul snapshot
+    // Deschide fișierul de snapshot pentru scriere
     int snapshot_fd = open(snapshot_path, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
     if (snapshot_fd == -1) {
-        fprintf(stderr, "Eroare la crearea fișierului snapshot %s: %s\n", snapshot_path, strerror(errno));
+        fprintf(stderr, "Eroare la crearea fișierului de snapshot %s: %s\n", snapshot_path, strerror(errno));
         return;
     }
 
-    // Scrie informații despre element în fișierul snapshot
+    // Scrie informații despre element în fișierul de snapshot
     char buffer[1000];
-    int len = snprintf(buffer, sizeof(buffer), "Nume: %s\n", basename(path));
-    write(snapshot_fd, buffer, len);
-    len = snprintf(buffer, sizeof(buffer), "Tip: %s\n", S_ISDIR(file_stat.st_mode) ? "Director" : "Fișier");
-    write(snapshot_fd, buffer, len);
+    snprintf(buffer, sizeof(buffer), "Nume: %s\n", basename(path));
+    write(snapshot_fd, buffer, strlen(buffer));
+    snprintf(buffer, sizeof(buffer), "Dimensiune: %lu bytes\n", (unsigned long)file_stat.st_size);
+    write(snapshot_fd, buffer, strlen(buffer));
+    snprintf(buffer, sizeof(buffer), "Tip: %s\n", S_ISDIR(file_stat.st_mode) ? "Director" : "Fișier");
+    write(snapshot_fd, buffer, strlen(buffer));
     
     close(snapshot_fd);
 }
+
+void compareAndUpdateSnapshot(char *path, char *output_dir, char *malicious_dir, char *snapshot_path)
+{
+    // Obține informații despre elementul actual
+    struct stat file_stat;
+    if (stat(path, &file_stat) == -1) {
+        fprintf(stderr, "Eroare la obținerea informațiilor despre %s: %s\n", path, strerror(errno));
+        return;
+    }
+
+    // Construiește calea completă pentru fișierul de snapshot
+    snprintf(snapshot_path, 1000, "%s/snapshot_%lu", output_dir, (unsigned long)file_stat.st_ino);
+
+    // Deschide fișierul de snapshot pentru citire
+    int snapshot_fd = open(snapshot_path, O_RDONLY);
+    if (snapshot_fd == -1) {
+        fprintf(stderr, "Eroare la deschiderea fișierului de snapshot %s: %s\n", snapshot_path, strerror(errno));
+        return;
+    }
+
+    // Citeste informațiile din fișierul de snapshot
+    char buffer[1000];
+    ssize_t bytes_read = read(snapshot_fd, buffer, sizeof(buffer));
+    if (bytes_read == -1) {
+        fprintf(stderr, "Eroare la citirea din fișierul de snapshot %s: %s\n", snapshot_path, strerror(errno));
+        close(snapshot_fd);
+        return;
+    }
+    close(snapshot_fd);
+
+    // Separă informațiile din fișierul de snapshot în linii
+    char *line = strtok(buffer, "\n");
+    char name[256], type[256];
+    unsigned long size;
+    while (line != NULL) {
+        if (sscanf(line, "Nume: %s", name) == 1) {
+            // Obține numele fișierului din snapshot
+        } else if (sscanf(line, "Dimensiune: %lu bytes", &size) == 1) {
+            // Obține dimensiunea fișierului din snapshot
+        } else if (sscanf(line, "Tip: %s", type) == 1) {
+            // Obține tipul fișierului din snapshot
+        }
+        line = strtok(NULL, "\n");
+    }
+
+    // Verifică dacă fișierul a fost modificat
+    if (file_stat.st_size != size) {
+        // Actualizează snapshot-ul cu noile informații
+        createSnapshot(path, output_dir, malicious_dir);
+        printf("Snapshot-ul pentru %s a fost actualizat.\n", path);
+    } 
+}
+
 
 void process_directory(char *dir_path, char *output_dir, char *malicious_dir) {
     DIR *dir = opendir(dir_path);
@@ -92,35 +139,31 @@ void process_directory(char *dir_path, char *output_dir, char *malicious_dir) {
         }
 
         // Construiește calea completă pentru fiecare element din director
-        char element_path[1000];
+        char element_path[PATH_MAX];
         snprintf(element_path, sizeof(element_path), "%s/%s", dir_path, entry->d_name);
 
-
-        // Aplică scriptul script.sh pentru fiecare fișier din director
-        char command[2000];
-        snprintf(command, sizeof(command), "sudo ./script.sh %s", element_path);
-        system(command);
-
-        // Verifică rezultatul întoarcerii și drepturile fișierului
-        struct stat file_stat;
-        if (stat(element_path, &file_stat) == -1) {
-            fprintf(stderr, "Eroare la obținerea drepturilor de acces pentru %s: %s\n", element_path, strerror(errno));
+        // Verifică dacă elementul este un director sau un fișier
+        struct stat st;
+        if (stat(element_path, &st) == -1) {
+            fprintf(stderr, "Eroare la obținerea informațiilor despre %s: %s\n", element_path, strerror(errno));
             continue;
         }
 
-        // Verifică dacă scriptul a returnat 1 și fișierul nu are drepturi
-        if (WEXITSTATUS(system(command)) == 1 && (file_stat.st_mode & S_IRWXU) == 0 && (file_stat.st_mode & S_IRWXG) == 0 && (file_stat.st_mode & S_IRWXO) == 0) {
-            move_malicious_file(element_path, malicious_dir);
-        }
-
-        // Dacă elementul este un director, procesează-l recursiv
-        if (entry->d_type == DT_DIR) {
+        // Verifică dacă elementul este un director
+        if (S_ISDIR(st.st_mode)) {
+            // Procesează recursiv directorul
             process_directory(element_path, output_dir, malicious_dir);
+        } else {
+            // Compară și actualizează snapshot-ul pentru fișierul curent
+            char snapshot_path[1000];
+            compareAndUpdateSnapshot(element_path, output_dir, malicious_dir, snapshot_path);
         }
     }
 
     closedir(dir);
 }
+
+
 
 
 int main(int argc, char **argv)
