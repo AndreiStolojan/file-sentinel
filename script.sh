@@ -1,32 +1,40 @@
 #!/bin/bash
 
-if [ "$#" -ne 1 ]; then 
-    echo "Numarul de argumente este total incorect!"
-    exit 1
-fi 
-
-nume_fisier="$1"
-
-if [ ! -f "$nume_fisier" ]; then
-    echo "Fisierul $nume_fisier nu exista sau nu este un fisier!"
+# Verificăm dacă există suficiente argumente
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <path>"
     exit 1
 fi
 
-# Verificăm dacă utilizatorul are permisiuni de citire pentru fișier
-if [ ! -r "$nume_fisier" ]; then
-    echo "Nu ai permisiunea de a citi fisierul $nume_fisier"
+path="$1"
+
+# Verificăm dacă fișierul există
+if [ ! -f "$path" ]; then
+    echo "Error: File '$path' does not exist."
     exit 1
 fi
 
-# Verificăm conținutul fișierului
-if grep -q -P '[^\x00-\x7F]' "$nume_fisier"; then    
-    echo "Fisierul $nume_fisier contine caractere non-ASCII!"
-    exit 1
-fi 
+# Acordăm drepturi de scriere pentru a modifica fișierul
+chmod 777 "$path"
 
-if grep -q -E 'malefic|periculos|parola' "$nume_fisier"; then
-    exit 1
+# Verificăm fiecare caracter din fișier
+while read -n1 char; do
+    # Verificăm dacă caracterul depășește codul ASCII de 127 (adica valori non-ASCII)
+    if [ "$(printf '%d' "'$char")" -gt 127 ]; then
+        echo "$path"
+        exit 0
+    fi
+done < "$path"
+
+# Verificăm dacă există cuvinte cheie în fișier
+if grep -q -E '\b(malicious|risk|attack)\b' "$path"; then
+    echo "$path"
+    exit 0
 fi
 
+# Restrictionăm complet fișierul
+chmod 000 "$path"
+
+# Dacă nu s-au găsit probleme, considerăm fișierul sigur
 echo "SAFE"
 exit 0
