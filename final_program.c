@@ -193,12 +193,12 @@ void generateSnapshot(char *snapshot_directory, char *directory_name, int snapsh
 
                     close(pfd[0]);
 
-                    int return_code = -1;
-                    pid_t finished_pid = 0;
-                    finished_pid = wait(&return_code);
-                    if(WIFEXITED(return_code))
-                        if(WEXITSTATUS(return_code) != EXIT_SUCCESS)
-                            printf("Nepotul are o eroare pid=%d: code=%d\n", finished_pid, WEXITSTATUS(return_code)); 
+                    // int return_code = -1;
+                    // pid_t finished_pid = 0;
+                    // finished_pid = wait(&return_code);
+                    // if(WIFEXITED(return_code))
+                    //     if(WEXITSTATUS(return_code) != EXIT_SUCCESS)
+                    //         printf("Nepotul are o eroare pid=%d: code=%d\n", finished_pid, WEXITSTATUS(return_code)); 
                 } 
             }
             else
@@ -233,11 +233,11 @@ int treat_dir(char *directory_name, char *snapshot_path, char *snapshot_director
     load_snapshot(&text_loaded2,snapshot_path);
     
     if(strcmp(text_loaded1, text_loaded2) != 0)
-        printf("Schimbare la %s\n", directory_name);
+        printf("S-a produs o schimbare in directorul '%s'\n", directory_name);
     else
-        printf("\nNu sunt schimbari in fisierul '%s' !\n", directory_name);
+        printf("Nu sunt schimbari in directorul '%s' !\n", directory_name);
     
-    printf("Numar de virusi in fisierul %s : %d\n\n",directory_name,nr_virus); // Afisam numarul de viruși detectați
+    printf("Numar de virusi in directorul '%s' : %d\n\n",directory_name,nr_virus); // Afisam numarul de viruși detectați
 
     return nr_virus;
 }
@@ -260,7 +260,7 @@ int main(int argc, char **argv)
         {
             snapshot_directory = argv[i + 1];
         }
-        else if (strcmp(argv[i], "-x") == 0)
+        else if (strcmp(argv[i], "-s") == 0)
         {
             malicious_directory = argv[i + 1];
         }
@@ -280,7 +280,7 @@ int main(int argc, char **argv)
 
     for (int i = 1; i < argc; i++)
 {
-    if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "-x") == 0)
+    if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "-s") == 0)
     {
         i++;
         continue;
@@ -304,6 +304,7 @@ int main(int argc, char **argv)
         }
         else
         {
+            printf("\nProcesul cu PID-ul %d a fost creat.\n", pid);
             int status;
             waitpid(pid, &status, 0);
             if (WIFEXITED(status)) {
