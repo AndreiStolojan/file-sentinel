@@ -32,7 +32,7 @@ int openFile(char *file_name)
 
     if (pd_file < 0)
     {
-        fprintf(stderr,"Eroare la deschiderea fisierului %s!\n",file_name);
+        fprintf(stderr, "Eroare la deschiderea fisierului %s!\n", file_name);
         exit(3);
     }
 
@@ -45,7 +45,7 @@ int openFileRead(char *file_name)
 
     if (pd_file < 0)
     {
-        fprintf(stderr,"Eroare la deschiderea fisierului %s!\n",file_name);
+        fprintf(stderr, "Eroare la deschiderea fisierului %s!\n", file_name);
         exit(3);
     }
 
@@ -58,10 +58,11 @@ int dirVerify(char *name)
     return S_ISDIR(buf.st_mode);
 }
 
-
-int hasNoWritePermissions(struct stat fileStat) {
+int hasNoWritePermissions(struct stat fileStat)
+{
     // Check if owner and group have write permissions
-    if ((fileStat.st_mode & S_IWUSR) && (fileStat.st_mode & S_IWGRP)) {
+    if ((fileStat.st_mode & S_IWUSR) && (fileStat.st_mode & S_IWGRP))
+    {
         return 0; // File has write permissions for owner and group
     }
     return 1; // File does not have write permissions for owner and group
@@ -69,12 +70,12 @@ int hasNoWritePermissions(struct stat fileStat) {
 
 void load_snapshot(char **loaded_text, char *snapshot_directory)
 {
-    char *text = (char *)malloc((sizeof(char) + 1)* SNAPSHOT_MAX_LEN);
+    char *text = (char *)malloc((sizeof(char) + 1) * SNAPSHOT_MAX_LEN);
     text[0] = '\0';
 
-    int fd_file= openFileRead(snapshot_directory);
+    int fd_file = openFileRead(snapshot_directory);
     int read_status = read(fd_file, text, SNAPSHOT_MAX_LEN);
-    if(read_status < 0 || read_status  == SNAPSHOT_MAX_LEN)
+    if (read_status < 0 || read_status == SNAPSHOT_MAX_LEN)
     {
         perror("Not all snapshot was loaded");
     }
@@ -82,7 +83,7 @@ void load_snapshot(char **loaded_text, char *snapshot_directory)
     *loaded_text = text;
 }
 
-void generateSnapshot(char *snapshot_directory, char *directory_name, int snapshot_fd, char *malicious_directory, int *nr_virus) 
+void generateSnapshot(char *snapshot_directory, char *directory_name, int snapshot_fd, char *malicious_directory, int *nr_virus)
 {
     struct stat dir_inode = return_lstat(directory_name);
 
@@ -90,7 +91,7 @@ void generateSnapshot(char *snapshot_directory, char *directory_name, int snapsh
     DIR *dir = opendir(directory_name);
     if (dir == NULL)
     {
-        fprintf(stderr,"Eroare la deschiderea directorului %s!\n",directory_name);
+        fprintf(stderr, "Eroare la deschiderea directorului %s!\n", directory_name);
         exit(EXIT_FAILURE);
     }
 
@@ -102,7 +103,7 @@ void generateSnapshot(char *snapshot_directory, char *directory_name, int snapsh
     strftime(last_modification_dir, sizeof(last_modification_dir), "%Y-%m-%d %H:%M:%S", tm_info_dir);
     char entry_data_dir[1024];
     snprintf(entry_data_dir, sizeof(entry_data_dir), "Nume: %s, Tip: %s, Size: %ld bytes, Ultima modificare: %s\n",
-                directory_name, type_dir, dir_inode.st_size, last_modification_dir);
+             directory_name, type_dir, dir_inode.st_size, last_modification_dir);
     if (write(snapshot_fd, entry_data_dir, strlen(entry_data_dir)) != strlen(entry_data_dir))
     {
         perror("Eroare la scrierea în fișierul de snapshot");
@@ -146,26 +147,26 @@ void generateSnapshot(char *snapshot_directory, char *directory_name, int snapsh
         snprintf(entry_data, sizeof(entry_data), "Nume: %s, Tip: %s, Size: %ld bytes, Ultima modificare: %s\n",
                  entry->d_name, type, buf.st_size, last_modification);
 
-        if(current_is_file)
+        if (current_is_file)
         {
             if ((buf.st_mode & S_IRWXU) == 0 && (buf.st_mode & S_IRWXG) == 0 && (buf.st_mode & S_IRWXO) == 0)
             {
                 int pfd[2];
-                if(pipe(pfd) < 0)
+                if (pipe(pfd) < 0)
                     perror("Pipeul nu merge.");
 
                 pid_t pid = fork();
-                if(pid < 0)
+                if (pid < 0)
                     perror("Eroare la creerea proceselor.\n");
 
-                if(pid == 0)
-                {   
-                    close(pfd[0]);/* inchide capatul de citire; */
-                    dup2(pfd[1],1);
+                if (pid == 0)
+                {
+                    close(pfd[0]); /* inchide capatul de citire; */
+                    dup2(pfd[1], 1);
 
-                    execl("script.sh", "script",  entry_path ,(char *)NULL);
+                    execl("script.sh", "script", entry_path, (char *)NULL);
 
-                    close(pfd[1]);/* inchide capatul de scriere */
+                    close(pfd[1]); /* inchide capatul de scriere */
                     perror("NU O SUPRASCRIS EXECU.\n");
                     exit(EXIT_FAILURE);
                 }
@@ -176,7 +177,7 @@ void generateSnapshot(char *snapshot_directory, char *directory_name, int snapsh
                     int lungime = read(pfd[0], mesaj, 1000);
                     mesaj[lungime - 1] = '\0';
 
-                    if(strcmp("SAFE",  mesaj) != 0)
+                    if (strcmp("SAFE", mesaj) != 0)
                     {
                         (*nr_virus)++; // Incrementăm numărul de viruși
                         char dest[1000];
@@ -184,7 +185,7 @@ void generateSnapshot(char *snapshot_directory, char *directory_name, int snapsh
                         char *last_slash = strrchr(mesaj, '/');
                         strcat(dest, last_slash);
 
-                        if(rename(mesaj, dest) < 0)
+                        if (rename(mesaj, dest) < 0)
                         {
                             perror("Nu am putut copia\n");
                             exit(EXIT_FAILURE);
@@ -198,20 +199,19 @@ void generateSnapshot(char *snapshot_directory, char *directory_name, int snapsh
                     // finished_pid = wait(&return_code);
                     // if(WIFEXITED(return_code))
                     //     if(WEXITSTATUS(return_code) != EXIT_SUCCESS)
-                    //         printf("Nepotul are o eroare pid=%d: code=%d\n", finished_pid, WEXITSTATUS(return_code)); 
-                } 
-            }
-            else
-                if (write(snapshot_fd, entry_data, strlen(entry_data)) != strlen(entry_data))
-                {
-                    perror("Eroare la scrierea în fișierul de snapshot");
-                    exit(1);
+                    //         printf("Nepotul are o eroare pid=%d: code=%d\n", finished_pid, WEXITSTATUS(return_code));
                 }
+            }
+            else if (write(snapshot_fd, entry_data, strlen(entry_data)) != strlen(entry_data))
+            {
+                perror("Eroare la scrierea în fișierul de snapshot");
+                exit(1);
+            }
         }
 
-        if(current_is_dir)
+        if (current_is_dir)
         {
-            generateSnapshot(snapshot_directory,entry_path, snapshot_fd, malicious_directory,nr_virus);
+            generateSnapshot(snapshot_directory, entry_path, snapshot_fd, malicious_directory, nr_virus);
         }
     }
 
@@ -221,27 +221,26 @@ void generateSnapshot(char *snapshot_directory, char *directory_name, int snapsh
 int treat_dir(char *directory_name, char *snapshot_path, char *snapshot_directory, char *malicious_directory)
 {
     char *text_loaded1 = NULL;
-    load_snapshot(&text_loaded1,snapshot_path);
+    load_snapshot(&text_loaded1, snapshot_path);
 
     int nr_virus = 0; // Initializăm numărul de viruși cu 0
 
     int snapshot_fd = openFile(snapshot_path);
-    generateSnapshot(snapshot_directory, directory_name,snapshot_fd, malicious_directory,&nr_virus);
+    generateSnapshot(snapshot_directory, directory_name, snapshot_fd, malicious_directory, &nr_virus);
     close(snapshot_fd);
 
     char *text_loaded2 = NULL;
-    load_snapshot(&text_loaded2,snapshot_path);
-    
-    if(strcmp(text_loaded1, text_loaded2) != 0)
+    load_snapshot(&text_loaded2, snapshot_path);
+
+    if (strcmp(text_loaded1, text_loaded2) != 0)
         printf("S-a produs o schimbare in directorul '%s'\n", directory_name);
     else
         printf("Nu sunt schimbari in directorul '%s' !\n", directory_name);
-    
-    printf("Numar de virusi in directorul '%s' : %d\n\n",directory_name,nr_virus); // Afisam numarul de viruși detectați
+
+    printf("Numar de virusi in directorul '%s' : %d\n\n", directory_name, nr_virus); // Afisam numarul de viruși detectați
 
     return nr_virus;
 }
-
 
 int main(int argc, char **argv)
 {
@@ -279,60 +278,58 @@ int main(int argc, char **argv)
     }
 
     for (int i = 1; i < argc; i++)
-{
-    if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "-s") == 0)
     {
-        i++;
-        continue;
-    }
+        if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "-s") == 0)
+        {
+            i++;
+            continue;
+        }
 
-    if (dirVerify(argv[i]))
-    {
-        char *directory_name = basename(argv[i]);
-        char snapshot_path[MAX_PATH];
-        struct stat dir_inode = return_lstat(argv[i]);
+        if (dirVerify(argv[i]))
+        {
+            char *directory_name = basename(argv[i]);
+            char snapshot_path[MAX_PATH];
+            struct stat dir_inode = return_lstat(argv[i]);
             snprintf(snapshot_path, sizeof(snapshot_path), "%s/snapshot_%ld", snapshot_directory, dir_inode.st_ino);
 
-        pid_t pid = fork();
-        if(pid < 0)
-            perror("Eroare la creerea proceselor.\n");
+            pid_t pid = fork();
+            if (pid < 0)
+                perror("Eroare la creerea proceselor.\n");
 
-        if(pid == 0)
-        {
-            int nr_virusi_partial = treat_dir(directory_name, snapshot_path, snapshot_directory, malicious_directory);
-            exit(nr_virusi_partial);
+            if (pid == 0)
+            {
+                int nr_virusi_partial = treat_dir(directory_name, snapshot_path, snapshot_directory, malicious_directory);
+                exit(nr_virusi_partial);
+            }
+            else
+            {
+                printf("\nProcesul cu PID-ul %d a fost creat.\n", pid);
+                int status;
+                waitpid(pid, &status, 0);
+                if (WIFEXITED(status))
+                {
+                    nr_virusi += WEXITSTATUS(status);
+                }
+            }
         }
         else
         {
-            printf("\nProcesul cu PID-ul %d a fost creat.\n", pid);
-            int status;
-            waitpid(pid, &status, 0);
-            if (WIFEXITED(status)) {
-                nr_virusi += WEXITSTATUS(status);
-            }
+            fprintf(stderr, "Argumentul %s nu este director!\n", argv[i]);
+            exit(EXIT_FAILURE);
         }
     }
-    else
-    {
-        fprintf(stderr, "Argumentul %s nu este director!\n", argv[i]);
-        exit(EXIT_FAILURE);
-    }
-}
-   
 
     int return_code = -1;
     pid_t finished_pid = 0;
-    for(int i = 1; i < argc; i ++)
+    for (int i = 1; i < argc; i++)
     {
         finished_pid = wait(&return_code);
-        if(WIFEXITED(return_code))
-            if(WEXITSTATUS(return_code) != EXIT_SUCCESS)
-                printf("Procesul are o eroare pid=%d: code=%d\n", finished_pid, WEXITSTATUS(return_code)); 
-        
-        
+        if (WIFEXITED(return_code))
+            if (WEXITSTATUS(return_code) != EXIT_SUCCESS)
+                printf("Procesul are o eroare pid=%d: code=%d\n", finished_pid, WEXITSTATUS(return_code));
     }
 
-    printf("\n\nNumarul total de virusi gasiti: %d !\n",nr_virusi);
+    printf("\n\nNumarul total de virusi gasiti: %d !\n", nr_virusi);
 
     return 0;
 }
